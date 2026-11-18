@@ -12,6 +12,7 @@ let usuario;
 let produtos = [];
 let tela = 'estoque';
 let carregamento = 0;
+let produtoEmEdicao = null;
 
 function elemento(tag, texto, atributos = {}) {
   const item = document.createElement(tag);
@@ -35,6 +36,7 @@ async function api(rota, metodo = 'GET', dados) {
 }
 
 function mostrarLogin() {
+  editarProduto();
   usuario = null;
   carregamento++;
   $('#sistema').hidden = true;
@@ -112,26 +114,62 @@ function baixo(produto) {
   return produto.saldo <= produto.estoque_minimo;
 }
 
+function indicador(titulo, valor, destaque = false) {
+  const cartao = elemento('div', null, { class: destaque ? 'indicador alerta' : 'indicador' });
+  cartao.append(elemento('dt', titulo), elemento('dd', valor));
+  return cartao;
+}
+
+function editarProduto(produto = null) {
+  const form = $('#produto');
+  form.reset();
+  produtoEmEdicao = produto?.id ?? null;
+  $('#titulo-produto').textContent = produto ? 'Editar produto' : 'Cadastrar produto';
+  $('#salvar-produto').textContent = produto ? 'Salvar alterações' : 'Cadastrar produto';
+  $('#cancelar-edicao').hidden = !produto;
+  $('#saldo-inicial').hidden = Boolean(produto);
+  form.elements.saldo.disabled = Boolean(produto);
+  form.elements.sku.readOnly = Boolean(produto);
+  if (produto) {
+    for (const campo of ['nome', 'sku', 'codigo_barras', 'preco', 'custo', 'estoque_minimo']) {
+      form.elements[campo].value = produto[campo] ?? '';
+    }
+    form.elements.nome.focus();
+    form.scrollIntoView({ block: 'nearest' });
+  }
+  margem();
+}
+
 function listarProdutos() {
   const termo = $('#busca').value.toLowerCase().trim();
   const lista = produtos.filter(p => [p.nome, p.sku, p.codigo_barras].some(v => v?.toLowerCase().includes(termo)));
-  if ($('#ordem').value === 'saidas') lista.sort((a, b) => b.saidas - a.saidas);
-  if ($('#ordem').value === 'baixo') lista.sort((a, b) => Number(baixo(b)) - Number(baixo(a)));
+  const visiveis = $('#somente-baixo').checked ? lista.filter(baixo) : lista;
+  if ($('#ordem').value === 'saidas') visiveis.sort((a, b) => b.saidas - a.saidas);
+  if ($('#ordem').value === 'baixo') visiveis.sort((a, b) => Number(baixo(b)) - Number(baixo(a)));
   const titulos = ['SKU', 'Produto', 'Preço', 'Saldo', 'Mínimo', 'Saídas em 30 dias', 'Em trânsito'];
   if (gestao()) titulos.push('Custo', 'Ação');
-  tabela('#lista-produtos', titulos, lista.map(p => {
+  tabela('#lista-produtos', titulos, visiveis.map(p => {
     const saldo = baixo(p) ? elemento('span', p.saldo + ' · Baixo', { class: 'baixo' }) : p.saldo;
     const linha = [p.sku, p.nome, moeda(p.preco), saldo, p.estoque_minimo, p.saidas, p.em_transito];
-    if (gestao()) linha.push(p.custo == null ? '—' : moeda(p.custo),
-      p.saldo === 0 && Number(p.em_transito) === 0 ? botao('Arquivar', async () => {
+    if (gestao()) {
+      const acoes = elemento('div', null, { class: 'acoes' });
+      acoes.append(botao('Editar', () => editarProduto(p)));
+      if (p.saldo === 0 && Number(p.em_transito) === 0) acoes.append(botao('Arquivar', async () => {
         if (!confirm('Arquivar ' + p.nome + '?')) return;
         const resultado = await api('produtos/' + p.id, 'DELETE');
         await abrir('estoque');
         aviso(resultado.mensagem);
-      }) : '—');
+      }));
+      linha.push(p.custo == null ? '—' : moeda(p.custo), acoes);
+    }
     return linha;
   }));
-  $('#resumo').textContent = produtos.length + ' produtos ativos · ' + produtos.filter(baixo).length + ' com estoque baixo';
+  const comEstoqueBaixo = produtos.filter(baixo).length;
+  $('#resumo').replaceChildren(
+    indicador('Produtos ativos', produtos.length),
+    indicador('Unidades em estoque', produtos.reduce((total, p) => total + Number(p.saldo), 0)),
+    indicador('Produtos com estoque baixo', comEstoqueBaixo, comEstoqueBaixo > 0),
+    indicador('Unidades em trânsito', produtos.reduce((total, p) => total + Number(p.em_transito), 0)));
 }
 
 function camposMovimento() {
@@ -305,10 +343,10 @@ async function abrir(destino) {
     const total = await api('relatorio');
     if (atual !== carregamento) return;
     $('#totais').replaceChildren(
-      elemento('dt', 'Faturamento em vendas'), elemento('dd', moeda(total.faturamento)),
-      elemento('dt', 'Custo de entradas com nota fiscal'), elemento('dd', moeda(total.compras)),
-      elemento('dt', 'Lucro bruto estimado nas vendas com custo'), elemento('dd', moeda(total.lucro)),
-      elemento('dt', 'Registros de venda sem custo informado'), elemento('dd', total.vendas_sem_custo));
+      indicador('Faturamento em vendas', moeda(total.faturamento)),
+      indicador('Custo das entradas', moeda(total.compras)),
+      indicador('Lucro bruto estimado', moeda(total.lucro)),
+      indicador('Vendas sem custo informado', total.vendas_sem_custo));
   }
 }
 
@@ -346,6 +384,8 @@ $('#produto').addEventListener('input', evento => {
 });
 $('#busca').addEventListener('input', listarProdutos);
 $('#ordem').addEventListener('change', listarProdutos);
+$('#somente-baixo').addEventListener('change', listarProdutos);
+$('#cancelar-edicao').addEventListener('click', () => editarProduto());
 $('#movimento').elements.tipo.addEventListener('change', camposMovimento);
 $('#fornecedor').elements.cnpj.addEventListener('input', evento => {
   evento.target.value = formatarCnpj(evento.target.value);
@@ -370,7 +410,13 @@ formulario($('#login'), async dados => {
   await api('login', 'POST', dados);
   await entrar();
 }, false);
-formulario($('#produto'), dados => api('produtos', 'POST', dados));
+formulario($('#produto'), async dados => {
+  const resultado = produtoEmEdicao
+    ? await api('produtos/' + produtoEmEdicao, 'PATCH', dados)
+    : await api('produtos', 'POST', dados);
+  editarProduto();
+  return resultado;
+});
 formulario($('#movimento'), dados => api('movimentacoes', 'POST', dados));
 formulario($('#fornecedor'), dados => api('fornecedores', 'POST', dados));
 formulario($('#pedido'), dados => api('pedidos', 'POST', {

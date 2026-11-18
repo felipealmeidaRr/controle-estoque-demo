@@ -5,11 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Controle de Estoque</title>
   <link rel="stylesheet" href="estilo.css">
-  <script src="demo.js" defer></script>
-  <script src="app.js" defer></script>
+  <script src="demo.js" defer></script><script src="app.js" defer></script>
 </head>
 <body>
-  <header><h1>Controle de Estoque</h1><span id="identidade"></span><p>Demonstração com dados fictícios · Somente leitura</p></header>
+  <header><div class="marca"><span class="simbolo" aria-hidden="true">▦</span><h1>Controle de Estoque</h1></div><span id="identidade"></span><p>Demonstração com dados fictícios · Somente leitura</p></header>
   <main>
     <p id="mensagem" role="status" hidden></p>
     <form id="login">
@@ -29,26 +28,28 @@
       </nav>
       <section id="estoque">
         <h2>Estoque atual</h2>
-        <p id="resumo"></p>
+        <dl id="resumo" class="indicadores"></dl>
         <div class="linha">
           <label>Buscar produto <input id="busca" type="search" placeholder="Nome, SKU ou código de barras"></label>
           <label>Ordenar por <select id="ordem"><option value="nome">Nome</option><option value="saidas">Mais saídas em 30 dias</option><option value="baixo">Estoque baixo primeiro</option></select></label>
+          <label class="filtro"><input id="somente-baixo" type="checkbox"> Apenas estoque baixo</label>
         </div>
         <div id="lista-produtos" class="tabela"></div>
         <form id="produto">
-          <h3>Cadastrar produto</h3>
+          <h3 id="titulo-produto">Cadastrar produto</h3>
           <div class="campos">
             <label>Nome <input name="nome" maxlength="150" required></label>
             <label>SKU <input name="sku" maxlength="40" required></label>
             <label>Código de barras <input name="codigo_barras" maxlength="40"></label>
             <label>Preço de venda (R$) <input name="preco" type="number" min="0" step="0.01" required></label>
-            <label>Quantidade inicial <input name="saldo" type="number" min="0" value="0" required></label>
+            <label id="saldo-inicial">Quantidade inicial <input name="saldo" type="number" min="0" value="0" required></label>
             <label>Estoque mínimo <input name="estoque_minimo" type="number" min="0" value="0" required></label>
             <label data-perfil="gestao">Custo unitário (R$) <input name="custo" type="number" min="0" step="0.01"></label>
             <label data-perfil="gestao">Margem desejada (%) <input id="margem-desejada" type="number" min="0" max="99.99" step="0.01"></label>
           </div>
           <p data-perfil="gestao"><output id="margem">Margem de lucro —</output></p>
-          <button>Cadastrar produto</button>
+          <button id="salvar-produto">Cadastrar produto</button>
+          <button type="button" id="cancelar-edicao" hidden>Cancelar edição</button>
         </form>
         <form id="importar" data-perfil="admin">
           <h3>Importar produtos</h3>
@@ -103,7 +104,7 @@
       </section>
       <section id="relatorio" hidden>
         <h2>Financeiro</h2>
-        <dl id="totais"></dl>
+        <dl id="totais" class="indicadores"></dl>
       </section>
     </div>
   </main>
